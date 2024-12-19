@@ -124,8 +124,13 @@ public class MakeLeaderTable {
             if (size>0) {
                 DayOfWeek dayOfWeek = LocalDateTime.ofInstant(Instant.ofEpochSecond(startTime), ZoneId.systemDefault()).getDayOfWeek();
                 String niceDay = dayOfWeek.plus(day-1).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+                String dayUrl = "https://adventofcode.com/2024/day/"+day;
 
-                out.println("<h1><a href=\"https://adventofcode.com/2024/day/" + day + "\" target=\"_blank\">Day "+day+"</a> ("+niceDay+")</h1>");
+                String dayUrlContent = getURLContent(dayUrl);
+                int titlePosition = dayUrlContent.indexOf("Day "+day+":");
+                int titleEnd = dayUrlContent.indexOf("---", titlePosition);
+                String title = dayUrlContent.substring(titlePosition, titleEnd).trim();
+                out.println("<h1><a href=\""+dayUrl + "\" target=\"_blank\">"+title+"</a> ("+niceDay+")</h1>");
                 out.println("<table>");
                 out.println("<th></th><th align=left>Part A</th><th></th><th align=left>Part B</th><th></th><th align=left>Parts A + B</th>");
                 for (int i = 0; i < size; i++) {
