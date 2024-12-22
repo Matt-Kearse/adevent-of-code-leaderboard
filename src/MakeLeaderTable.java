@@ -116,6 +116,7 @@ public class MakeLeaderTable {
 
 
         for(int day=1;day<=31;day++) {
+            System.out.println("Processing day "+day);
             List<Map.Entry<String, Long>> partA = partAs.get(day);
             List<Map.Entry<String, Long>> partB = partBs.get(day);
             List<Map.Entry<String, Long>> partAB = partABs.get(day);
