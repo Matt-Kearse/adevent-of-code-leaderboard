@@ -9,6 +9,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -20,19 +23,26 @@ import java.util.*;
 public class MakeLeaderTable {
 
     public static void main(String[] args) throws IOException, InterruptedException {
+        generate(2024, 1671463);
+    }
+
+    public static void generate(int year, int leaderBoard) throws IOException, InterruptedException {
         ObjectMapper objectMapper = new ObjectMapper();
-        String source = "https://adventofcode.com/2024/leaderboard/private/view/1671463";
+        String source = "https://adventofcode.com/"+year+"/leaderboard/private/view/"+leaderBoard;
         String sourceJson = source+".json";
         String text = getURLContent(sourceJson);
         JsonNode rootNode = objectMapper.readTree(text);
 
 
-        File file = new File("leaderBoard.html").getCanonicalFile();
+        String fileName1 = "leaderBoard_" + year + ".html";
+        String fileName2 = "leaderBoard.html";
+        File file = new File(fileName1).getCanonicalFile();
         PrintStream out = new PrintStream(new FileOutputStream(file));
 
         long startTime = Long.parseLong(rootNode.get("day1_ts").asText());
         JsonNode members = rootNode.get("members");
         out.println("<html>");
+        out.println("<title>"+year+" Leaderboard</title>");
         out.println("<style>");
         out.println(
                 "body {\n" +
@@ -60,9 +70,9 @@ public class MakeLeaderTable {
         out.println("<body>");
 
 
-        SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd 'at' HH:mm");
+        SimpleDateFormat dateFormatter= new SimpleDateFormat("yyyy-MM-dd 'at' HH:mm");
         Date date = new Date();
-        String now = formatter.format(date);
+        String now = dateFormatter.format(date);
 
         out.println("<h1>Alternative Leaderboard derived from <a href=\""+source+"\" target=\"_blank\">Private AOC Leaderboard</a> on "+now+"</h1><br>");
 
@@ -73,6 +83,7 @@ public class MakeLeaderTable {
         MedalTables partAMedals = new MedalTables();
         MedalTables partBMedals = new MedalTables();
         MedalTables partABMedals = new MedalTables();
+        List<LatestResult> latestResults = new ArrayList<>();
         for(int day=1;day<=31;day++) {
             long dayStartTime = startTime + (day - 1) * 24 * 60 * 60;
             Map<String, Long> star1Times = new LinkedHashMap<>();
@@ -87,14 +98,20 @@ public class MakeLeaderTable {
                     JsonNode star1 = dayLevel.get("1");
                     JsonNode star2 = dayLevel.get("2");
                     long star1Time = 0;
+                    String paddedDay = ""+day;
+                    if (paddedDay.length()<2)
+                        paddedDay = paddedDay + "&nbsp;";
                     if (star1 != null) {
                         star1Time = Long.parseLong(star1.get("get_star_ts").asText());
                         star1Times.put(name, star1Time - dayStartTime);
+
+                        latestResults.add(new LatestResult(star1Time, name, "Day "+paddedDay+" 1st ⭐", star1Time - dayStartTime));
                     }
                     if (star2 != null) {
-                        long time = Long.parseLong(star2.get("get_star_ts").asText());
-                        bothTimes.put(name, time - dayStartTime);
-                        star2Times.put(name, time - star1Time);
+                        long star2Time = Long.parseLong(star2.get("get_star_ts").asText());
+                        bothTimes.put(name, star2Time - dayStartTime);
+                        star2Times.put(name, star2Time - star1Time);
+                        latestResults.add(new LatestResult(star2Time, name, "Day "+paddedDay+" 2nd ⭐", star2Time - star1Time));
                     }
                 }
             }
@@ -109,9 +126,15 @@ public class MakeLeaderTable {
             partBMedals.add(partB);
             partABMedals.add(partAB);
         }
-        partABMedals.printTable(out, "Parts A+B");
-        partAMedals.printTable(out,"Part A");
-        partBMedals.printTable(out, "Part B");
+
+
+
+        partABMedals.printTable(out, "Both ⭐s");
+        partAMedals.printTable(out,"1st ⭐");
+        partBMedals.printTable(out, "2nd ⭐");
+
+
+        List<String> puzzleNames = readPuzzleNames(year);
 
 
 
@@ -125,15 +148,19 @@ public class MakeLeaderTable {
             if (size>0) {
                 DayOfWeek dayOfWeek = LocalDateTime.ofInstant(Instant.ofEpochSecond(startTime), ZoneId.systemDefault()).getDayOfWeek();
                 String niceDay = dayOfWeek.plus(day-1).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-                String dayUrl = "https://adventofcode.com/2024/day/"+day;
+                String dayUrl = "https://adventofcode.com/"+year+"/day/"+day;
 
-                String dayUrlContent = getURLContent(dayUrl);
-                int titlePosition = dayUrlContent.indexOf("Day "+day+":");
-                int titleEnd = dayUrlContent.indexOf("---", titlePosition);
-                String title = dayUrlContent.substring(titlePosition, titleEnd).trim();
+                String title;
+                if (day-1<puzzleNames.size()) {
+                    title = puzzleNames.get(day-1);
+                }
+                else {
+                    title = getPuzzleNameFromUrl(dayUrl, day);
+                    puzzleNames.add(title);
+                }
                 out.println("<h1><a href=\""+dayUrl + "\" target=\"_blank\">"+title+"</a> ("+niceDay+")</h1>");
                 out.println("<table>");
-                out.println("<th></th><th align=left>Part A</th><th></th><th align=left>Part B</th><th></th><th align=left>Parts A + B</th>");
+                out.println("<th></th><th align=left>1st ⭐</th><th></th><th align=left>2nd ⭐</th><th></th><th align=left>Both ⭐s</th>");
                 for (int i = 0; i < size; i++) {
                     String prefix = i==0?"\uD83E\uDD47":i==1?"\uD83E\uDD48":i==2?"\uD83E\uDD49":"";
                     out.print("<tr>");
@@ -152,10 +179,53 @@ public class MakeLeaderTable {
             }
 
         }
+
+        printAllResults(latestResults, out);
+
         out.println("</body>");
         out.println("</html>");
         out.close();
+        writePuzzleNames(year, puzzleNames);
+        Files.copy(Path.of(fileName1), Path.of(fileName2), StandardCopyOption.REPLACE_EXISTING);
         System.out.println("Saved to "+file);
+    }
+
+    private static void printAllResults(List<LatestResult> latestResults, PrintStream out) {
+        SimpleDateFormat dateFormatter= new SimpleDateFormat("yyyy-MM-dd");
+        SimpleDateFormat timeFormatter= new SimpleDateFormat("HH:mm");
+        latestResults.sort(Comparator.comparing(a->a.tm));
+        if (!latestResults.isEmpty()) {
+            out.println("<h1>--- All Results ---</h1>");
+            out.println("<table>");
+            String previousDate = "";
+            for (LatestResult latestResult : latestResults) {
+                out.println("<tr>");
+                String thisDate = dateFormatter.format(new Date(latestResult.tm * 1000));
+                if (thisDate.equals(previousDate))
+                    thisDate = "";
+                else
+                    previousDate = thisDate;
+                out.println("<td>" + thisDate + "</td>");
+                out.println("<td>&nbsp;" + timeFormatter.format(new Date(latestResult.tm * 1000)) + "</td>");
+                out.println("<td>" + "&nbsp;" + latestResult.name + "</td>");
+                out.println("<td>" + latestResult.description + "</td>");
+                out.println("<td>" + formatTime(latestResult.time) + "</td>");
+                out.println("</tr>");
+            }
+            out.println("</table>");
+            out.println("<br>");
+        }
+    }
+
+    private record LatestResult(long tm, String name, String description, long time) {
+
+    }
+
+    private static String getPuzzleNameFromUrl(String dayUrl, int day) throws IOException, InterruptedException {
+        String dayUrlContent = getURLContent(dayUrl);
+        int titlePosition = dayUrlContent.indexOf("Day "+ day +":");
+        int titleEnd = dayUrlContent.indexOf("---", titlePosition);
+        return dayUrlContent.substring(titlePosition, titleEnd).trim();
     }
 
     private static String formatTime(long _time) {
@@ -292,6 +362,22 @@ public class MakeLeaderTable {
             System.out.println(response.headers().toString());
             throw new RuntimeException("Failed to fetch URL content. HTTP response code: " + response.statusCode());
         }
+    }
+
+    private static void writePuzzleNames(int year, List<String> puzzleNames) throws IOException {
+        Files.write(getPuzzleNamesFile(year), puzzleNames);
+    }
+
+    private static List<String> readPuzzleNames(int year) throws IOException {
+        Path path = getPuzzleNamesFile(year);
+        if (!path.toFile().exists())
+            return new ArrayList<>();
+        else
+            return new ArrayList<>(Files.readAllLines(path));
+    }
+
+    private static Path getPuzzleNamesFile(int year) {
+        return Path.of("puzzleNames" + year + ".txt");
     }
 
 }
